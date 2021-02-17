@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <style>
+    h1 {
+  /* Prefix required. Even Firefox only supports the -webkit- prefix */
+  -webkit-text-stroke-width: 1px;
+  -webkit-text-stroke-color: #b0b0b0;
+}
+    </style>
+    <title>CG FINAL</title>
+    <meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.3.1"></script>
+    <script src=helpers.js></script>
+    <script src=script.js></script>
+    <script src=perlin.js></script>
+    <script src=lib9.js></script>
+  </head>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+  <div class="canvas">
+    <br>
+    <center><canvas id='canvas1' width=450 height=450></canvas></center>
+  </div>
+
+  <script id='my_title' type='text/html'>
+  </script>
+
+  <script id='my_instructions' type='text/html'><font color=#000000>
+  <h1 style="font-family:Impact"><strong>
+    R E C I T A L 1: S U N S E T
+  </strong></h2>
+  <p><font color=#b0b0b0>
+  Use the 1-8 numbered keys on your keyboard <br>(or the home row a-f and j-;)
+  to create music <br>in the honor of the sunset.
+  <p>
+  Go with the flow!
+
+  </script>
+</center>
+<br>
+<!-- Rotate view
+<input type=range min=1 max=100 value=50 class=slider id=rotateViewSlider> -->
+<p>
+
+<td width=20>
+
+</table>
+</body>
+
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   attribute vec3 aNor;
+   attribute vec2 aUV;
+   uniform   mat4 uPMat;
+   uniform   mat4 uMatF;
+   uniform   mat4 uMatI;
+   varying   vec3 vaPos;
+   varying   vec3 vPos;
+   varying   vec3 vNor;
+   varying   vec2 vUV;
+   void main() {
+      vec4 pos = uPMat * uMatF * vec4(aPos, 1.);
+      vec4 nor = vec4(aNor, 0.) * uMatI;
+      gl_Position = pos * vec4(1.,1.,1./10.,1.);
+      vaPos = aPos;
+      vPos = pos.xyz;
+      vNor = nor.xyz;
+      vUV  = aUV;
+   }
+</script>
+
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+
+ const int nl = 1;            // NUMBER OF LIGHTS
+ uniform mat4  uM;            // MATERIAL PROPERTIES
+ uniform float uTime;         // TIME (CURRENTLY UNUSED)
+ varying vec3  vPos;
+ varying vec3  vaPos;
+ varying vec3  vNor;
+ varying vec2  vUV;
+
+ void main() {
+    vec3 P = vPos;            // SURFACE POINT
+    vec3 N = normalize(vNor); // SURFACE NORMAL
+    vec3 E = vec3(0.,0.,1.);  // APPROX DIRECTION TO EYE
+
+    // UNPACK MATERIAL PROPERTIES MATRIX
+    mat4 material = uM;
+    float ta      = material[3].r;
+    vec3 color;
+
+    if (ta == 2.){
+      gl_FragColor = vec4(.7, .7, .7, 1.);
+      return;
+    }
+    if (ta == 3.){
+      gl_FragColor = vec4(1., .1, .1, 1.);
+      return;
+    }
+    if (ta == 5.){
+      gl_FragColor = vec4(.0, .0, .0, 1.);
+      return;
+    }
+    if (ta == 4.){
+      if(vUV.y>.5)
+      color = mix(vec3(0.,0.,0.),vec3(5.,5.,5.),vUV.y-.86+.08*noise(500.*vPos.xyx));
+      else color = mix(color,vec3(3.,3.,3.),-vUV.y+.1+.08*noise(500.*vPos.xyx));
+      gl_FragColor = vec4(color, 1.);
+      return;
+    }
+ }</script>
+
+
+<script>
+
+let white_plastic         = phong([.1,.1,.1], [.5,.5,.5], [1,1,1], 20, 4);
+let white_2D              = phong([.05,0.01,.2], [0.02,0.1,.2], [1,1,1], 20, 2);
+let red_2D                = phong([.03,.01,.01], [.23,.01,.01], [1,1,1], 20, 3);
+let black_2D              = phong([.05,0.01,.2], [0.02,0.1,.2], [1,1,1], 20, 5);
+let white_2D1             = phong([.05,0.01,.2], [0.02,0.1,.2], [1,1,1], 20, 6);
+
+
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<center><font size=6 color=#b0b0b0>' + document.body.innerHTML + '</center>'
+   ,'<center><font size=5 color=#b0b0b0>' + my_instructions.innerHTML + '</center>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+var notes = [];
+for (let n = 21 ; n < 105 ; n++) {
+  notes[n - 21] = document.createElement("AUDIO");
+  let s = "https://storage.googleapis.com/magentadata/js/soundfonts/sgm_plus/acoustic_grand_piano/p"
+  +  n + "_v79.mp3";
+  notes[n - 21].setAttribute("src",s);
+}
+
+let createNote = [];
+for(let i = 0; i < 8; i ++){
+  createNote[i] = false;
+}
+
+function Create2DArray(rows) {
+  var arr = [];
+
+  for (var i=0;i<rows;i++) {
+     arr[i] = [];
+  }
+
+  return arr;
+}
+
+// USEFUL ANIMATION VARIABLES.
+
+let startTime = Date.now(), prevTime = startTime, rate = 1, theta = 0;
+
+
+// DEFINE ANIMATION CALLBACK, WHICH WILL GET CALLED AT EVERY FRAME.
+
+let time = 0;
+let viewMatrix = new Matrix();
+let inverseViewMatrix = new Matrix();
+let dragObject = null;
+let size = 5;
+let tSize = 5;
+let sunSize = 1;
+let floatNote = Create2DArray(8);
+let grow = [];
+let len = [];
+
+for(let i = 0; i < 8; i ++ ) {
+  grow[i] = false;
+  len[i] = 0;
+}
+
+let uvToTSquare = (u,v) => [ 2*u-1+1.5*(.5+.5*Math.sin(5+.6*time))*noise.simplex2(-u,2*v)*(.5*tSize-2),2*v-1+Math.cos(10)*noise.simplex2(2*u,2*v)*(tSize-4),.001*v ];
+let uvToTSquare1 = (u,v) => [ 2*u-1+Math.sin(5+.2*time)*noise.simplex2(u,v)*(3-tSize),2*v-1+.2*Math.cos(10)*noise.simplex2(2*u,2*v),0 ];
+let uvToTSquare2 = (u,v) => [ 2*u-1+1.5*(.5+.5*Math.cos(2-.4*time))*noise.simplex2(u,-1.3*v)*(.5*tSize-2),2*v-1.1*Math.sin(2)*noise.simplex2(2.3*u,2*v)*(tSize-4),.001*v ];
+let tSquare   = createTriangleMesh(uvToTSquare  ,  20,  20);
+let tSquare1  = createTriangleMesh(uvToTSquare1  ,  20,  20);
+let tSquare2  = createTriangleMesh(uvToTSquare2  ,  20,  20);
+
+
+noise.seed(Math.random());
+
+
+function animate() {
+  tSize += .4*(size-tSize);
+
+   // VARY THE ROTATION RATE DEPENDING ON THE SLIDER VALUE.
+   time = (Date.now() - startTime) / 1000;
+   // SET TIME IN THE GPU.
+   setUniform('1f', 'uTime', time);
+   // DRAW EVERYTHING.
+   viewMatrix.identity()
+             .rotateX(-0.1)
+             .rotateY(theta);
+
+   inverseViewMatrix.setValue(viewMatrix.getValue());
+   inverseViewMatrix.invert();
+   scene.identity().multiply(viewMatrix);
+   cloud1.scale = [8,1,size];
+   cloud2.scale = [6,.4,size];
+   cloud3.scale = [9,.8,size];
+   sun.translate[1] -=.01;
+
+   if(sun.translate[1]<-1){
+     sun.translate[1] = 1;
+   }
+   transformObject(cloud1);
+   transformObject(cloud2);
+   transformObject(cloud3);
+   transformObject(sun);
+   transformObject(reflect);
+   transformObject(topCover);
+   transformObject(topCover1);
+   transformObject(buttonCover);
+   for(let i = 0; i < 12; i ++ ){
+      transformObject(cubeFrame[i]);
+   }
+   cloud1.shape = createTriangleMesh(uvToTSquare  ,  20,  50);
+   cloud2.shape = createTriangleMesh(uvToTSquare1 ,  30,  50);
+   cloud3.shape = createTriangleMesh(uvToTSquare2 ,  30,  50);
+   for(let i = 0; i < 8; i ++ ){
+     if(createNote[i]) {
+       if(!grow[i]){
+         floatNote[i][len[i]] = scene.add(square,red_2D);
+         floatNote[i][len[i]].scale = [.05,.05,.1];
+         floatNote[i][len[i]].rotate = [0,0,0];
+         floatNote[i][len[i]].translate = inverseViewMatrix.transform([.5-Math.random(),-Math.random(),.5-Math.random()]);
+         len[i] ++;
+         grow[i] = true;
+       }
+       if(grow[i]){
+         floatNote[i][len[i]-1].scale[1] +=.1;
+       }
+     }
+   }
+   for(let i = 0; i < 8; i ++){
+     for(let j = 0; j < len[i]; j ++ ){
+       floatNote[i][j].translate[1] += .02;
+       if(floatNote[i][j].translate[1] > 2){
+         floatNote[i][j].delete();
+         floatNote[i].splice(j,1);
+         len[i] --;
+       }
+       if(floatNote[i][j]) transformObject(floatNote[i][j]);
+     }
+   }
+
+
+   // SET THE BACKGROUND COLOR, IN THIS CASE TO DARK BLUE.
+   gl.clearColor(0,0,0,1);
+   gl.clear(gl.COLOR_BUFFER_BIT);
+
+   // DRAW EVERYTHING
+
+   objectAtCursor = null;
+   root.draw();
+
+}
+
+
+let root = new Object();
+let scene = root.add();
+let cubeFrame = [];
+
+let cloud1 = scene.add(tSquare,white_plastic);
+    cloud1.scale = [8,1,2];
+    cloud1.rotate = [0,0,0];
+    cloud1.translate = inverseViewMatrix.transform([0,-.25,.2]);
+let cloud2 = scene.add(tSquare1,white_plastic);
+    cloud2.scale = [4,1,0];
+    cloud2.rotate = [0,0,0];
+    cloud2.translate = inverseViewMatrix.transform([0,0,-.21]);
+let cloud3 = scene.add(tSquare2,white_plastic);
+    cloud3.scale = [4,1,0];
+    cloud3.rotate = [0,0,0];
+    cloud3.translate = inverseViewMatrix.transform([0,-.6,1]);
+
+let reflect = scene.add(square,black_2D);
+    reflect.scale = [5,5,5];
+    reflect.rotate = [.5,0,0];
+    reflect.translate = inverseViewMatrix.transform([0,-.5,0]);
+let topCover = scene.add(square,black_2D);
+    topCover.scale = [5,5,5];
+    topCover.rotate = [.5,0,0];
+    topCover.translate = inverseViewMatrix.transform([0,.5,0]);
+let topCover1 = scene.add(square,black_2D);
+    topCover1.scale = [5,3,1];
+    topCover1.rotate = [0,0,0];
+    topCover1.translate = inverseViewMatrix.transform([0,.801,.5]);
+let buttonCover = scene.add(square,black_2D);
+    buttonCover.scale = [5,3,1];
+    buttonCover.rotate = [0,0,0];
+    buttonCover.translate = inverseViewMatrix.transform([0,-.801,.5]);
+let sun = scene.add(sphere,red_2D);
+    sun.scale = [2,2,2];
+    sun.rotate = [0,0,0];
+    sun.translate = inverseViewMatrix.transform([0,0,0]);
+
+    cubeFrame[0] = scene.add(cube,white_2D);
+    cubeFrame[0].scale = [.02,.02,5];
+    cubeFrame[0].rotate = [0,0,0];
+    cubeFrame[0].translate = inverseViewMatrix.transform([-.5,.5,0]);
+    cubeFrame[1] = scene.add(cube,white_2D);
+    cubeFrame[1].scale = [.02,.02,5];
+    cubeFrame[1].rotate = [0,0,0];
+    cubeFrame[1].translate = inverseViewMatrix.transform([.5,.5,0]);
+    cubeFrame[2] = scene.add(cube,white_2D);
+    cubeFrame[2].scale = [.02,.02,5];
+    cubeFrame[2].rotate = [0,0,0];
+    cubeFrame[2].translate = inverseViewMatrix.transform([-.5,-.5,0]);
+    cubeFrame[3] = scene.add(cube,white_2D);
+    cubeFrame[3].scale = [.02,.02,5];
+    cubeFrame[3].rotate = [0,0,0];
+    cubeFrame[3].translate = inverseViewMatrix.transform([.5,-.5,0]);
+    cubeFrame[4] = scene.add(cube,white_2D);
+    cubeFrame[4].scale = [5.,.02,.02];
+    cubeFrame[4].rotate = [0,0,0];
+    cubeFrame[4].translate = inverseViewMatrix.transform([0,.5,-.5]);
+    cubeFrame[5] = scene.add(cube,white_2D);
+    cubeFrame[5].scale = [5,.02,.02];
+    cubeFrame[5].rotate = [0,0,0];
+    cubeFrame[5].translate = inverseViewMatrix.transform([0,.5,.5]);
+    cubeFrame[6] = scene.add(cube,white_2D);
+    cubeFrame[6].scale = [5,.02,.02];
+    cubeFrame[6].rotate = [0,0,0];
+    cubeFrame[6].translate = inverseViewMatrix.transform([0,-.5,-.5]);
+    cubeFrame[7] = scene.add(cube,white_2D);
+    cubeFrame[7].scale = [5,.02,.02];
+    cubeFrame[7].rotate = [0,0,0];
+    cubeFrame[7].translate = inverseViewMatrix.transform([0,-.5,.5]);
+    cubeFrame[8] = scene.add(cube,white_2D);
+    cubeFrame[8].scale = [.02,5,.02];
+    cubeFrame[8].rotate = [0,0,0];
+    cubeFrame[8].translate = inverseViewMatrix.transform([-.5,0,-.5]);
+    cubeFrame[9] = scene.add(cube,white_2D);
+    cubeFrame[9].scale = [.02,5,.02];
+    cubeFrame[9].rotate = [0,0,0];
+    cubeFrame[9].translate = inverseViewMatrix.transform([-.5,0,.5]);
+    cubeFrame[10] = scene.add(cube,white_2D);
+    cubeFrame[10].scale = [.02,5,.02];
+    cubeFrame[10].rotate = [0,0,0];
+    cubeFrame[10].translate = inverseViewMatrix.transform([.5,0,-.5]);
+    cubeFrame[11] = scene.add(cube,white_2D);
+    cubeFrame[11].scale = [.02,5,.02];
+    cubeFrame[11].rotate = [0,0,0];
+    cubeFrame[11].translate = inverseViewMatrix.transform([.5,0,.5]);
+
+// TRANSFORM AN OBJECT, USING ITS TRANSFORM PROPERTIES.
+
+let transformObject = obj => {
+   obj.identity()
+      .translate(obj.translate)
+      .rotateX(Math.PI * obj.rotate[0])
+      .rotateY(Math.PI * obj.rotate[1])
+      .rotateZ(Math.PI * obj.rotate[2])
+      .scale(obj.scale)
+      .scale(0.1);
+}
+
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+
+</script>
+</html>
